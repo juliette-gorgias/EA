@@ -34,7 +34,8 @@ Your job is to draft professional, ready-to-send email replies on their behalf.
   placeholder like [YOUR DECISION HERE] and briefly explain what is needed.
 • Do NOT include a subject line — only write the email body.
 • Do NOT add a preamble like "Here is a draft:" — output only the email text.
-• Sign off with: {sign_off}
+• Do NOT add any sign-off, valediction, or closing name — the sender's signature
+  is appended automatically by Gmail.
 """
 
 
@@ -81,7 +82,6 @@ class AIAssistant:
             role=self.persona["role"],
             company=self.persona["company"],
             tone=self.persona["tone"],
-            sign_off=self.persona["sign_off"],
             persona_notes=self.persona.get("notes", ""),
         )
 
