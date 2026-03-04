@@ -166,14 +166,30 @@ def main() -> None:
                 free_slots_context=free_slots_context,
             )
 
+            # Download any PDF attachments from the original email so they
+            # can be forwarded with the draft reply.
+            pdf_attachments: list[dict] = []
+            for att_meta in email.get("attachments", []):
+                try:
+                    data = gmail.get_attachment(email["id"], att_meta["attachment_id"])
+                    pdf_attachments.append({"filename": att_meta["filename"], "data": data})
+                    logger.info("Downloaded attachment '%s'", att_meta["filename"])
+                except Exception:
+                    logger.warning("Could not download attachment '%s'", att_meta["filename"])
+
             if dry_run:
                 sig_preview = f"\n\n-- \n{signature}" if signature else ""
-                print(f"\n{'='*60}\nDRAFT for: {subject}\n{'='*60}\n{draft_body}{sig_preview}\n")
+                att_note = (
+                    f"\n[Attachments: {', '.join(a['filename'] for a in pdf_attachments)}]"
+                    if pdf_attachments else ""
+                )
+                print(f"\n{'='*60}\nDRAFT for: {subject}\n{'='*60}\n{draft_body}{sig_preview}{att_note}\n")
             else:
                 gmail.create_draft_reply(
                     original_email=email,
                     draft_body=draft_body,
                     signature=signature,
+                    attachments=pdf_attachments or None,
                 )
                 gmail.mark_as_processed(email["id"])
 

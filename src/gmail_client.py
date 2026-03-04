@@ -4,6 +4,8 @@ import base64
 import html as _html
 import logging
 import re
+from email.mime.application import MIMEApplication
+from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
 import html2text  # used in _extract_body
@@ -134,6 +136,7 @@ class GmailClient:
             message_id_header = headers.get("message-id", "")
 
             body = self._extract_body(msg["payload"])
+            attachments = self._extract_attachment_metadata(msg["payload"])
 
             return {
                 "id": message_id,
@@ -148,6 +151,7 @@ class GmailClient:
                 "body": body,
                 "snippet": msg.get("snippet", ""),
                 "raw_headers": headers,
+                "attachments": attachments,
             }
         except HttpError as exc:
             logger.error("Error parsing message %s: %s", message_id, exc)
@@ -210,13 +214,20 @@ class GmailClient:
     # ------------------------------------------------------------------
 
     def create_draft_reply(
-        self, original_email: dict, draft_body: str, signature: str = ""
+        self,
+        original_email: dict,
+        draft_body: str,
+        signature: str = "",
+        attachments: list[dict] | None = None,
     ) -> str:
         """Create a Gmail draft as a reply to *original_email*.
 
         The draft is sent as HTML so that the signature (raw Gmail HTML) renders
         with working hyperlinks. If *signature* is provided it is appended after
         the body, separated by the conventional ``--`` delimiter.
+
+        *attachments* is an optional list of dicts with keys ``filename`` (str)
+        and ``data`` (bytes). Each entry is attached as a PDF.
         """
         body_html = _text_to_html(draft_body)
         if signature:
@@ -229,7 +240,19 @@ class GmailClient:
         else:
             html = f"<div>{body_html}</div>"
 
-        msg = MIMEText(html, "html", "utf-8")
+        if attachments:
+            msg: MIMEMultipart | MIMEText = MIMEMultipart("mixed")
+            msg.attach(MIMEText(html, "html", "utf-8"))
+            for att in attachments:
+                part = MIMEApplication(att["data"], _subtype="pdf")
+                part.add_header(
+                    "Content-Disposition", "attachment", filename=att["filename"]
+                )
+                msg.attach(part)
+                logger.info("Attaching PDF '%s' (%d bytes)", att["filename"], len(att["data"]))
+        else:
+            msg = MIMEText(html, "html", "utf-8")
+
         msg["To"] = original_email["from"]
         msg["Subject"] = (
             original_email["subject"]
@@ -280,6 +303,40 @@ class GmailClient:
                 "removeLabelIds": ["INBOX", "UNREAD"],
             },
         ).execute()
+
+    # ------------------------------------------------------------------
+    # Attachments
+    # ------------------------------------------------------------------
+
+    def _extract_attachment_metadata(self, payload: dict) -> list[dict]:
+        """Return a list of PDF attachment descriptors found in *payload*.
+
+        Each descriptor has ``filename`` and ``attachment_id`` keys.
+        Inline parts (no filename) are skipped.
+        """
+        results: list[dict] = []
+        mime = payload.get("mimeType", "")
+        body = payload.get("body", {})
+        filename = payload.get("filename", "")
+
+        if filename and mime == "application/pdf" and body.get("attachmentId"):
+            results.append({"filename": filename, "attachment_id": body["attachmentId"]})
+
+        for part in payload.get("parts", []):
+            results.extend(self._extract_attachment_metadata(part))
+
+        return results
+
+    def get_attachment(self, message_id: str, attachment_id: str) -> bytes:
+        """Download and return the raw bytes of a Gmail message attachment."""
+        result = (
+            self.service.users()
+            .messages()
+            .attachments()
+            .get(userId="me", messageId=message_id, id=attachment_id)
+            .execute()
+        )
+        return base64.urlsafe_b64decode(result["data"])
 
     # ------------------------------------------------------------------
     # Body extraction
