@@ -168,6 +168,7 @@ class GmailClient:
             subject = headers.get("subject", "(No Subject)")
             from_header = headers.get("from", "")
             to_header = headers.get("to", "")
+            cc_header = headers.get("cc", "")
             date = headers.get("date", "")
             message_id_header = headers.get("message-id", "")
 
@@ -183,6 +184,7 @@ class GmailClient:
                 "from_email": _extract_email(from_header),
                 "from_name": _extract_name(from_header),
                 "to": to_header,
+                "cc": cc_header,
                 "date": date,
                 "body": body,
                 "snippet": msg.get("snippet", ""),
@@ -289,7 +291,13 @@ class GmailClient:
         else:
             msg = MIMEText(html, "html", "utf-8")
 
-        msg["To"] = original_email["from"]
+        # Reply All: To = sender + original To recipients (minus self)
+        #            Cc = original Cc recipients (minus self)
+        all_to = _merge_recipients(original_email["from"], original_email.get("to", ""), self._my_email)
+        all_cc = _filter_self(original_email.get("cc", ""), self._my_email)
+        msg["To"] = all_to
+        if all_cc:
+            msg["Cc"] = all_cc
         msg["Subject"] = (
             original_email["subject"]
             if original_email["subject"].lower().startswith("re:")
@@ -421,6 +429,27 @@ def _text_to_html(text: str) -> str:
     return "".join(
         f"<p>{para.replace(chr(10), '<br>')}</p>" for para in paragraphs
     )
+
+
+def _filter_self(recipients: str, my_email: str) -> str:
+    """Return *recipients* with the user's own address removed."""
+    if not recipients:
+        return ""
+    filtered = [
+        r.strip() for r in recipients.split(",")
+        if _extract_email(r).lower() != my_email.lower()
+    ]
+    return ", ".join(filtered)
+
+
+def _merge_recipients(sender: str, original_to: str, my_email: str) -> str:
+    """Build Reply-All To field: sender + original To, excluding self."""
+    parts = [sender] if sender else []
+    for r in original_to.split(","):
+        r = r.strip()
+        if r and _extract_email(r).lower() != my_email.lower():
+            parts.append(r)
+    return ", ".join(parts)
 
 
 def _extract_email(header: str) -> str:
