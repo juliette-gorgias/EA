@@ -74,12 +74,17 @@ def main() -> None:
         logger.info("Initialising Ashby client…")
         ashby = AshbyContextClient(api_key=os.environ["ASHBY_API_KEY"])
 
+    # Fundraising CRM database ID — hardcoded from the Notion page URL anchor.
+    # Override via NOTION_INVESTOR_CRM_ID if you ever point this at a different DB.
+    _INVESTOR_CRM_DB_ID = os.environ.get(
+        "NOTION_INVESTOR_CRM_ID", "2a9ef5b9e6b74181b507c98b2c859eae"
+    )
     investor_crm: InvestorCRMClient | None = None
-    if os.environ.get("NOTION_API_KEY") and os.environ.get("NOTION_INVESTOR_CRM_ID"):
+    if os.environ.get("NOTION_API_KEY"):
         logger.info("Initialising Investor CRM client…")
         investor_crm = InvestorCRMClient(
             notion_api_key=os.environ["NOTION_API_KEY"],
-            crm_database_id=os.environ["NOTION_INVESTOR_CRM_ID"],
+            crm_database_id=_INVESTOR_CRM_DB_ID,
         )
 
     dry_run = os.environ.get("DRY_RUN", "false").lower() == "true"
