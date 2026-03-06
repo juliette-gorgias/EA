@@ -41,6 +41,7 @@ class GmailClient:
         self.service = build("gmail", "v1", credentials=creds)
         self._processed_label_id = self._get_or_create_label(PROCESSED_LABEL)
         self._newsletter_label_id = self._get_or_create_label(NEWSLETTER_LABEL)
+        self._my_email = self._fetch_my_email()
 
     # ------------------------------------------------------------------
     # Label management
@@ -76,6 +77,11 @@ class GmailClient:
     # Fetching emails
     # ------------------------------------------------------------------
 
+    def _fetch_my_email(self) -> str:
+        """Return the authenticated user's email address."""
+        profile = self.service.users().getProfile(userId="me").execute()
+        return profile["emailAddress"]
+
     def get_draft_thread_ids(self) -> set[str]:
         """Return the set of thread IDs that already have a draft."""
         try:
@@ -91,29 +97,59 @@ class GmailClient:
             return set()
 
     def get_unprocessed_emails(self) -> list[dict]:
-        """Return all primary inbox emails not yet processed and without existing drafts."""
+        """Return threads whose last message is not from the user and have no existing draft."""
         query = f"in:inbox category:primary -label:{PROCESSED_LABEL}"
         draft_thread_ids = self.get_draft_thread_ids()
         try:
-            emails = []
+            thread_ids: list[str] = []
             page_token = None
             while True:
                 kwargs: dict = {"userId": "me", "q": query}
                 if page_token:
                     kwargs["pageToken"] = page_token
-                result = self.service.users().messages().list(**kwargs).execute()
-                for ref in result.get("messages", []):
-                    parsed = self._parse_message(ref["id"])
-                    if parsed and not self._is_automated(parsed):
-                        if parsed["thread_id"] not in draft_thread_ids:
-                            emails.append(parsed)
+                result = self.service.users().threads().list(**kwargs).execute()
+                for ref in result.get("threads", []):
+                    if ref["id"] not in draft_thread_ids:
+                        thread_ids.append(ref["id"])
                 page_token = result.get("nextPageToken")
                 if not page_token:
                     break
+
+            emails = []
+            for tid in thread_ids:
+                last_msg = self._get_last_message_if_not_mine(tid)
+                if last_msg and not self._is_automated(last_msg):
+                    emails.append(last_msg)
             return emails
         except HttpError as exc:
-            logger.error("Error listing emails: %s", exc)
+            logger.error("Error listing threads: %s", exc)
             raise
+
+    def _get_last_message_if_not_mine(self, thread_id: str) -> dict | None:
+        """Return the last message in *thread_id* if it was NOT sent by the user, else None."""
+        try:
+            thread = (
+                self.service.users()
+                .threads()
+                .get(userId="me", id=thread_id, format="full")
+                .execute()
+            )
+            messages = thread.get("messages", [])
+            if not messages:
+                return None
+            last_msg = messages[-1]
+            headers = {
+                h["name"].lower(): h["value"]
+                for h in last_msg["payload"].get("headers", [])
+            }
+            from_email = _extract_email(headers.get("from", ""))
+            if from_email.lower() == self._my_email.lower():
+                logger.debug("Skipping thread %s — last message is from me.", thread_id)
+                return None
+            return self._parse_message(last_msg["id"])
+        except HttpError as exc:
+            logger.warning("Could not inspect thread %s: %s", thread_id, exc)
+            return None
 
     def _parse_message(self, message_id: str) -> dict | None:
         """Fetch and parse a single Gmail message into a plain dict."""
@@ -132,6 +168,7 @@ class GmailClient:
             subject = headers.get("subject", "(No Subject)")
             from_header = headers.get("from", "")
             to_header = headers.get("to", "")
+            cc_header = headers.get("cc", "")
             date = headers.get("date", "")
             message_id_header = headers.get("message-id", "")
 
@@ -147,6 +184,7 @@ class GmailClient:
                 "from_email": _extract_email(from_header),
                 "from_name": _extract_name(from_header),
                 "to": to_header,
+                "cc": cc_header,
                 "date": date,
                 "body": body,
                 "snippet": msg.get("snippet", ""),
@@ -253,7 +291,13 @@ class GmailClient:
         else:
             msg = MIMEText(html, "html", "utf-8")
 
-        msg["To"] = original_email["from"]
+        # Reply All: To = sender + original To recipients (minus self)
+        #            Cc = original Cc recipients (minus self)
+        all_to = _merge_recipients(original_email["from"], original_email.get("to", ""), self._my_email)
+        all_cc = _filter_self(original_email.get("cc", ""), self._my_email)
+        msg["To"] = all_to
+        if all_cc:
+            msg["Cc"] = all_cc
         msg["Subject"] = (
             original_email["subject"]
             if original_email["subject"].lower().startswith("re:")
@@ -385,6 +429,27 @@ def _text_to_html(text: str) -> str:
     return "".join(
         f"<p>{para.replace(chr(10), '<br>')}</p>" for para in paragraphs
     )
+
+
+def _filter_self(recipients: str, my_email: str) -> str:
+    """Return *recipients* with the user's own address removed."""
+    if not recipients:
+        return ""
+    filtered = [
+        r.strip() for r in recipients.split(",")
+        if _extract_email(r).lower() != my_email.lower()
+    ]
+    return ", ".join(filtered)
+
+
+def _merge_recipients(sender: str, original_to: str, my_email: str) -> str:
+    """Build Reply-All To field: sender + original To, excluding self."""
+    parts = [sender] if sender else []
+    for r in original_to.split(","):
+        r = r.strip()
+        if r and _extract_email(r).lower() != my_email.lower():
+            parts.append(r)
+    return ", ".join(parts)
 
 
 def _extract_email(header: str) -> str:
