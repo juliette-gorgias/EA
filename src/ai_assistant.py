@@ -86,6 +86,7 @@ class AIAssistant:
         notion_context: str = "",
         hubspot_context: str = "",
         ashby_context: str = "",
+        granola_context: str = "",
         calendar_context: str = "",
         free_slots_context: str = "",
     ) -> str:
@@ -104,6 +105,7 @@ class AIAssistant:
             notion_context=notion_context,
             hubspot_context=hubspot_context,
             ashby_context=ashby_context,
+            granola_context=granola_context,
             calendar_context=calendar_context,
             free_slots_context=free_slots_context,
         )
@@ -132,6 +134,7 @@ def _build_user_message(
     notion_context: str,
     hubspot_context: str,
     ashby_context: str = "",
+    granola_context: str = "",
     calendar_context: str = "",
     free_slots_context: str = "",
 ) -> str:
@@ -153,6 +156,9 @@ def _build_user_message(
 
     if ashby_context:
         parts.append(f"\n{ashby_context}")
+
+    if granola_context:
+        parts.append(f"\n{granola_context}")
 
     if free_slots_context:
         parts.append(f"\n{free_slots_context}")
