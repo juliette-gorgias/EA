@@ -32,7 +32,7 @@ sign_off: ""
 # All fields are optional; sensible defaults apply if this block is omitted.
 scheduling:
   # IANA timezone name for interpreting working hours.
-  timezone: "Europe/Paris"
+  timezone: "America/New_York"
   # Working hours during which slots may be offered (24-hour clock).
   working_hours_start: 9
   working_hours_end: 18
