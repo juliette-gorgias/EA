@@ -12,17 +12,17 @@
 # ============================================================
 
 # Your full name as it should appear in email sign-offs.
-name: "Romain Lapeyre"
+name: "Juliette Quersin"
 
 # Your job title, e.g. "CEO", "Head of Product", "Founder"
-role: "Co-Founder & CEO"
+role: "Chief of Staff"
 
 # Your company or organisation name.
 company: "Gorgias"
 
 # Writing tone for generated drafts.
 # Examples: "professional and concise", "warm and direct", "formal"
-tone: "warm and direct"
+tone: "warm and direct — short sentences, no filler, friendly but gets to the point fast"
 
 # How the email should be signed off.
 # Leave empty — the assistant appends your real Gmail signature automatically.
@@ -48,11 +48,17 @@ scheduling:
 # avoid, typical commitments you make, standing policies, etc.
 # This content is sent to the AI with every request.
 notes: |
-  - Romain is co-founder and CEO of Gorgias, a customer support helpdesk for e-commerce brands.
-  - Keep replies short and human — avoid corporate jargon or filler phrases.
-  - Never over-commit on timelines or make promises about product features.
-  - When unsure about a decision, use [ROMAIN TO DECIDE] as a clear placeholder.
-  - Prefer a friendly, first-name basis with senders when appropriate.
-  - When writing in French, greet with "hello" (never "salut").
-  - Never use "Best" or any sign-off closing — the email signature is appended automatically.
-  - Do NOT add any sign-off, valediction, or name at the end of the reply.
+  - Lead with the main point, not background
+  - Use plain language — simpler word always wins
+  - No filler phrases: never write "I hope this finds you well", "please don't hesitate", "as per my last message"
+  - No passive voice
+  - OK to be casual and use contractions
+  - Use first-name basis with senders when appropriate
+  - Never over-commit on timelines or make promises about product features
+  - When unsure about a decision or commitment, use [JULIETTE TO DECIDE] as a placeholder
+  - Sign off as "Juliette" for internal emails, "Juliette Quersin" for external
+  - Do NOT add any sign-off, valediction, or name at the end of the reply — signature is appended automatically
+  - Never write "Best", "Best regards", or "Kind regards"
+  - French is fine when replying to French-speaking colleagues (Corentin, PA)
+  - When writing in French, greet with "hello" (never "salut")
+  - We > I — collaborative tone, not self-promotional
