@@ -275,27 +275,66 @@ def _build_user_message(
 
 
 def _load_persona() -> dict:
-    """Load persona from config/persona.yaml, falling back to env vars."""
-    defaults = {
-        "name": os.environ.get("EXECUTIVE_NAME", "Alex"),
-        "role": os.environ.get("EXECUTIVE_ROLE", "Executive"),
-        "company": os.environ.get("EXECUTIVE_COMPANY", "Acme Corp"),
-        "tone": os.environ.get("EMAIL_TONE", "professional and concise"),
-        "sign_off": os.environ.get("EMAIL_SIGN_OFF", "Best,\n{name}"),
+    """Load persona from config/persona.yaml, with env vars taking priority."""
+    # Start with hard-coded defaults
+    persona = {
+        "name": "Alex",
+        "role": "Executive",
+        "company": "Acme Corp",
+        "tone": "professional and concise",
+        "sign_off": "Best,\n{name}",
         "notes": "",
+        "scheduling": {},
     }
 
+    # Layer 1: YAML file (overrides hard-coded defaults)
     if _PERSONA_FILE.exists():
         try:
             with _PERSONA_FILE.open() as f:
                 data = yaml.safe_load(f) or {}
             for key, val in data.items():
-                if val and str(val).strip() not in ("", "~", "null"):
-                    defaults[key] = val
+                if val is not None and str(val).strip() not in ("", "~", "null"):
+                    persona[key] = val
             logger.info("Persona loaded from %s", _PERSONA_FILE)
         except Exception as exc:
             logger.warning("Could not parse persona.yaml: %s — using defaults", exc)
 
+    # Layer 2: environment variables (override YAML)
+    _str_env = {
+        "EXECUTIVE_NAME": "name",
+        "EXECUTIVE_ROLE": "role",
+        "EXECUTIVE_COMPANY": "company",
+        "EMAIL_TONE": "tone",
+        "EMAIL_SIGN_OFF": "sign_off",
+    }
+    for env_key, persona_key in _str_env.items():
+        val = os.environ.get(env_key, "").strip()
+        if val:
+            persona[persona_key] = val
+
+    # Multi-line notes: literal \n sequences in the env var are expanded
+    notes_env = os.environ.get("PERSONA_NOTES", "").strip()
+    if notes_env:
+        persona["notes"] = notes_env.replace("\\n", "\n")
+
+    # Scheduling sub-fields
+    sched = persona.setdefault("scheduling", {})
+    _sched_env = {
+        "SCHEDULING_TIMEZONE": ("timezone", str),
+        "SCHEDULING_WORKING_HOURS_START": ("working_hours_start", int),
+        "SCHEDULING_WORKING_HOURS_END": ("working_hours_end", int),
+        "SCHEDULING_SLOT_DURATION_MINUTES": ("slot_duration_minutes", int),
+        "SCHEDULING_LOOKAHEAD_DAYS": ("lookahead_days", int),
+        "SCHEDULING_SLOTS_TO_PROPOSE": ("slots_to_propose", int),
+    }
+    for env_key, (sched_key, cast) in _sched_env.items():
+        val = os.environ.get(env_key, "").strip()
+        if val:
+            try:
+                sched[sched_key] = cast(val)
+            except ValueError:
+                logger.warning("Invalid value for %s: %r — ignoring", env_key, val)
+
     # Resolve {name} placeholder in sign_off
-    defaults["sign_off"] = defaults["sign_off"].format(name=defaults["name"])
-    return defaults
+    persona["sign_off"] = persona["sign_off"].format(name=persona["name"])
+    return persona
